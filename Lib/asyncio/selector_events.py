@@ -1149,6 +1149,8 @@ class _SelectorDatagramTransport(_SelectorTransport):
 
 class _SelectorSocketDatagramTransport(_SelectorTransport):
 
+    _buffer_factory = collections.deque
+
     def __init__(self, loop, sock, protocol, address, waiter=None, extra=None):
         super().__init__(loop, sock, protocol, extra)
         self._address = address
@@ -1169,6 +1171,8 @@ class _SelectorSocketDatagramTransport(_SelectorTransport):
             data = self._sock.recv(self.max_size)
         except (BlockingIOError, InterruptedError):
             pass
+        except OSError as exc:
+            self._protocol.error_received(exc)
         except Exception as exc:
             self._fatal_error(exc, 'Fatal read error on datagram transport')
         else:
@@ -1193,7 +1197,7 @@ class _SelectorSocketDatagramTransport(_SelectorTransport):
                 self._sock.sendto(data, self._address)
                 return
             except (BlockingIOError, InterruptedError):
-                self._loop._add_writer(self._sock_fd, self._sendto_ready)
+                self._loop._add_writer(self._sock_fd, self._send_ready)
             except OSError as exc:
                 self._protocol.error_received(exc)
                 return
@@ -1206,7 +1210,7 @@ class _SelectorSocketDatagramTransport(_SelectorTransport):
         self._buffer.append(bytes(data))
         self._maybe_pause_protocol()
 
-    def _sendto_ready(self):
+    def _send_ready(self):
         while self._buffer:
             data = self._buffer.popleft()
             try:
